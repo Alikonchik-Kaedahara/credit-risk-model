@@ -7,7 +7,7 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import FixedThresholdClassifier, train_test_split
 from sklearn.pipeline import Pipeline
 
 DATA_PATH = 'data/train_data'
@@ -23,6 +23,8 @@ LAST_CREDIT_COLS = ['enc_loans_credit_status', 'enc_loans_credit_type', 'pre_sin
 # parameters chosen in credit_risk_model.ipynb
 PARAMS = {'learning_rate': 0.05, 'n_estimators': 754, 'num_leaves': 127, 'min_child_samples': 300,
           'colsample_bytree': 0.3, 'subsample': 0.8, 'subsample_freq': 1, 'reg_lambda': 5.0}
+# defaults are rare, with the usual 0.5 predict gives 0 to everyone. 0.1 is the best F1 on validation
+THRESHOLD = 0.1
 
 
 def read_records(path):
@@ -99,7 +101,8 @@ class CreditHistoryFeatures(BaseEstimator, TransformerMixin):
 def make_pipeline():
     return Pipeline([
         ('features', CreditHistoryFeatures()),
-        ('model', LGBMClassifier(random_state=42, n_jobs=-1, verbose=-1, **PARAMS)),
+        ('model', FixedThresholdClassifier(LGBMClassifier(random_state=42, n_jobs=-1, verbose=-1, **PARAMS),
+                                           threshold=THRESHOLD)),
     ])
 
 
@@ -124,7 +127,7 @@ def main():
     pipe = make_pipeline()
     pipe.fit(records, target.values)
 
-    # without recurse=True the saved pipeline did not load in a new session
+    # without recurse=True the file loads in a new session, but predict fails (np is not defined)
     with open(MODEL_PATH, 'wb') as file:
         dill.dump(pipe, file, recurse=True)
     print('saved to', MODEL_PATH, f'({time.time() - start:.0f} s),',
